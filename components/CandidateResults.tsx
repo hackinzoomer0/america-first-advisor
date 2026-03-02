@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactElement } from "react";
 import type { Candidate } from "@/types/candidate";
 import {
   CandidateCard,
@@ -161,7 +162,7 @@ function PartyGroup({ party, partyFull, candidates }: { party: string; partyFull
   );
 }
 
-const OFFICE_ICONS: Record<string, JSX.Element> = {
+const OFFICE_ICONS: Record<string, ReactElement> = {
   Senate: (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21" />
