@@ -11,7 +11,8 @@ import {
 } from "@/components/CandidateCard";
 
 interface Props {
-  candidates: Candidate[];
+  federal: Candidate[];
+  state: Candidate[];
 }
 
 const PARTY_ORDER = ["DEM", "REP"];
@@ -218,16 +219,52 @@ function CandidateSection({ title, candidates }: { title: string; candidates: Ca
   );
 }
 
-export function CandidateResults({ candidates }: Props) {
-  const senate = candidates.filter((c) => c.office === "S");
-  const house = candidates.filter((c) => c.office === "H");
-  const presidential = candidates.filter((c) => c.office === "P");
+function LevelBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-bold uppercase tracking-widest text-ink-ghost">{title}</span>
+        <div className="flex-1 h-px bg-groove" />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function CandidateResults({ federal, state }: Props) {
+  const senate    = federal.filter((c) => c.office === "S");
+  const house     = federal.filter((c) => c.office === "H");
+  const president = federal.filter((c) => c.office === "E");
+
+  const governor    = state.filter((c) => c.office === "E");
+  const stateSenate = state.filter((c) => c.office === "SS");
+  const stateHouse  = state.filter((c) => c.office === "SH");
+
+  const hasFederal = senate.length + house.length + president.length > 0;
+  const hasState   = governor.length + stateSenate.length + stateHouse.length > 0;
 
   return (
     <section className="flex flex-col gap-8">
-      <CandidateSection title="Presidential" candidates={presidential} />
-      <CandidateSection title="Senate" candidates={senate} />
-      <CandidateSection title="House" candidates={house} />
+       <div className="flex flex-col gap-10">
+      {hasFederal && (
+        <LevelBlock title="Federal">
+          <div className="flex flex-col gap-8">
+            <CandidateSection title="Senate" candidates={senate} />
+            <CandidateSection title="House" candidates={house} />
+            <CandidateSection title="Presidential" candidates={president} />
+          </div>
+        </LevelBlock>
+      )}
+      {hasState && (
+        <LevelBlock title="State">
+          <div className="flex flex-col gap-8">
+            <CandidateSection title="Governor" candidates={governor} />
+            <CandidateSection title="State Senate" candidates={stateSenate} />
+            <CandidateSection title="State House" candidates={stateHouse} />
+          </div>
+        </LevelBlock>
+      )}
+      </div>
     </section>
   );
 }

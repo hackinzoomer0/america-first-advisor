@@ -46,7 +46,8 @@ function StarIcon({ className }: { className?: string }) {
 
 export default function Home() {
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [federal, setFederal] = useState<Candidate[]>([]);
+  const [stateResults, setStateResults] = useState<Candidate[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -63,7 +64,8 @@ export default function Home() {
     try {
       const res = await fetch(`/api/candidates?lat=${location.lat}&lon=${location.lon}&state=${location.stateCode}`);
       const data = await res.json();
-      setCandidates(data.results ?? []);
+      setFederal(data.federal ?? []);
+      setStateResults(data.state ?? []);
       setHasSearched(true);
     } finally {
       if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
@@ -137,9 +139,9 @@ export default function Home() {
         {/* Results */}
         {loadingPhase !== null ? (
           <LoadingIndicator phase={loadingPhase} />
-        ) : candidates.length > 0 ? (
-          <CandidateResults candidates={candidates} />
-        ) : hasSearched && candidates.length === 0 ? (
+        ) : federal.length > 0 || stateResults.length > 0 ? (
+          <CandidateResults federal={federal} state={stateResults} />
+        ) : hasSearched ? (
           <div className="flex flex-col items-center gap-3 py-16">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-groove">
               <svg className="h-6 w-6 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

@@ -4,9 +4,17 @@ import { useState } from "react";
 import type { Candidate } from "@/types/candidate";
 
 export function formatName(name: string): string {
-  const [last, first] = name.split(", ");
-  return [first, last]
-    .filter(Boolean)
+   if (name.includes(",")) {
+    // FEC format: "LAST, FIRST MIDDLE" → "First Middle Last"
+    const [last, rest] = name.split(", ");
+    return [rest, last]
+      .filter(Boolean)
+      .map((n) => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase())
+      .join(" ");
+  }
+  // Ballotpedia format: already "First Last" — normalize case only
+  return name
+    .split(" ")
     .map((n) => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase())
     .join(" ");
 }

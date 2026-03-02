@@ -3,8 +3,10 @@ export interface Candidate {
   name: string;
   party_full: string;
   party: string;
-  office: "S" | "H" | "P";
+  /** S=US Senate, H=US House, E=Executive (President/Governor), SS=State Senate, SH=State House */
+  office: "S" | "H" | "E" | "SS" | "SH";
   office_full: string;
+  level: "federal" | "state";
   incumbent_challenge_full: string;
   state: string;
   district: string;

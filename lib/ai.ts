@@ -7,12 +7,6 @@ if (!process.env.GEMINI_API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const OFFICE_LABELS: Record<string, string> = {
-  S: "U.S. Senate",
-  H: "U.S. House of Representatives",
-  P: "President of the United States",
-};
-
 export type CandidateAnalysis = {
   summary: string;
 } & {
@@ -24,7 +18,8 @@ export type CandidateAnalysis = {
 interface CandidateInput {
   candidate_id: string;
   name: string;
-  office: "S" | "H" | "P";
+  office: "S" | "H" | "E" | "SS" | "SH";
+  office_full: string;
   state: string;
 }
 
@@ -45,7 +40,7 @@ export async function analyzeCandidatesBatch(
   if (candidates.length === 0) return new Map();
 
   const candidateList = candidates
-    .map((c) => `- ID: ${c.candidate_id} | ${c.name} | ${OFFICE_LABELS[c.office]} | ${c.state}`)
+    .map((c) => `- ID: ${c.candidate_id} | ${c.name} | ${c.office_full} | ${c.state}`)
     .join("\n");
 
   const prompt = `You are a neutral political analyst. Analyze the following political candidates and return a JSON array — one object per candidate, in the same order.

@@ -2,63 +2,91 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCandidateDetailsBatch, upsertCandidateDetails, updateTotalScore, type CandidateAiDetails } from "@/lib/db";
 import { analyzeCandidatesBatch } from "@/lib/ai";
 import { ISSUES, computeTotalScore } from "@/lib/issues";
+import { fetchDistricts } from "@/lib/geocoder";
+import { fetchCandidatesInDistrict } from "@/lib/federal";
+import { scrapeStateElections, stateCodeToName, type StateElectionsResult } from "@/lib/states";
 import type { Candidate } from "@/types/candidate";
 
 const BLACKLIST_MSG = "This candidate has been blacklisted.";
 
-async function fetchDistrict(longitude: number, latitude: number): Promise<string | null> {
-  const params = new URLSearchParams({
-    x: longitude.toString(),
-    y: latitude.toString(),
-    benchmark: "Public_AR_Current",
-    vintage: "Current_Current",
-    layers: "Congressional Districts",
-    format: "json",
-  });
-
-  const res = await fetch(
-    `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?${params}`
-  );
-  const data = await res.json();
-
-  const districts: { CD119?: string }[] =
-    data?.result?.geographies?.["119th Congressional Districts"] ?? [];
-
-  return districts[0]?.CD119 ?? null;
-}
-
-async function fetchCandidatesInDistrict(state: string, district: string) {
-  const params = new URLSearchParams({
-    page: "1",
-    per_page: "50",
-    is_active_candidate: "true",
-    election_year: new Date().getFullYear().toString(),
-    state,
-    sort: "name",
-    sort_hide_null: "false",
-    sort_null_only: "false",
-    sort_nulls_last: "false",
-    api_key: process.env.FEC_API_KEY ?? "DEMO_KEY",
-  });
-  params.append("district", "00");
-  params.append("district", district);
-  params.append("candidate_status", "C");
-  params.append("candidate_status", "F");
-
-  const res = await fetch(`https://api.open.fec.gov/v1/candidates/search/?${params}`);
-  return await res.json();
-}
-
 const THREE_MONTHS_AGO_MS = 3 * 30 * 24 * 60 * 60 * 1000;
 
-async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]> {
-  const detailsMap = await getCandidateDetailsBatch(fecCandidates.map((c) => c.candidate_id));
+const BALLOTPEDIA_PARTY: Record<string, { party: string; party_full: string }> = {
+  Democratic:  { party: "DEM", party_full: "Democratic" },
+  Republican:  { party: "REP", party_full: "Republican" },
+  Libertarian: { party: "LIB", party_full: "Libertarian" },
+  Green:       { party: "GRN", party_full: "Green Party" },
+  Unknown:     { party: "OTH", party_full: "Independent" },
+};
+
+const RACE_TYPE_OFFICE: Record<string, "E" | "SS" | "SH"> = {
+  "governor":    "E",
+  "state-senate": "SS",
+  "state-house":  "SH",
+};
+
+const RACE_TYPE_FULL: Record<string, string> = {
+  "governor":    "Governor",
+  "state-senate": "State Senate",
+  "state-house":  "State House",
+};
+
+function toIdSlug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function stateRacesToCandidates(
+  races: StateElectionsResult["races"],
+  stateCode: string
+): Candidate[] {
+  const candidates: Candidate[] = [];
+  const year = new Date().getFullYear();
+
+  for (const race of races) {
+    const office = RACE_TYPE_OFFICE[race.type];
+    const office_full = RACE_TYPE_FULL[race.type];
+    for (const sc of race.candidates) {
+      const { party, party_full } = BALLOTPEDIA_PARTY[sc.party] ?? { party: "OTH", party_full: sc.party };
+      candidates.push({
+        candidate_id: `bp_${stateCode.toLowerCase()}_${race.type}_${toIdSlug(sc.name)}`,
+        name: sc.name,
+        party,
+        party_full,
+        office,
+        office_full,
+        level: "state",
+        incumbent_challenge_full: sc.incumbent ? "Incumbent" : "Challenger",
+        state: stateCode,
+        district: "",
+        has_raised_funds: false,
+        election_years: [year],
+        last_updated: null,
+        summary: null,
+        immigration_position: null,
+        immigration_score: null,
+        foreign_policy_position: null,
+        foreign_policy_score: null,
+        social_policy_position: null,
+        social_policy_score: null,
+        religion_position: null,
+        religion_score: null,
+        total_score: null,
+        blacklist: false,
+      });
+    }
+  }
+
+  return candidates;
+}
+
+async function enrichCandidates(candidates: Candidate[]): Promise<Candidate[]> {
+  const detailsMap = await getCandidateDetailsBatch(candidates.map((c) => c.candidate_id));
 
   const staleThreshold = Date.now() - THREE_MONTHS_AGO_MS;
   const needsAnalysis: Candidate[] = [];
   const scoreUpdates: Promise<void>[] = [];
 
-  const withDbData: Candidate[] = fecCandidates.map((c) => {
+  const withDbData: Candidate[] = candidates.map((c) => {
     const details = detailsMap.get(c.candidate_id);
 
     if (details?.blacklist) {
@@ -83,8 +111,6 @@ async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]
 
     const liveScore = details ? computeTotalScore(details) : null;
 
-    // If weights changed, the stored total_score may be stale for fresh records.
-    // Queue a lightweight update without blocking the response.
     if (details && !isStale && liveScore !== null && liveScore !== details.total_score) {
       scoreUpdates.push(updateTotalScore(c.candidate_id, liveScore));
     }
@@ -106,7 +132,6 @@ async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]
     };
   });
 
-  // Fire score patches without blocking
   if (scoreUpdates.length > 0) Promise.all(scoreUpdates).catch(console.error);
 
   if (needsAnalysis.length === 0) return withDbData;
@@ -167,10 +192,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "lat and lon are required" }, { status: 400 });
   }
 
-  const district = await fetchDistrict(parseFloat(lon), parseFloat(lat)) ?? "00";
-  const fecData = await fetchCandidatesInDistrict(state, district);
-  const fecCandidates: Candidate[] = fecData.results ?? [];
-  const results = await enrichCandidates(fecCandidates);
+  const stateName = stateCodeToName(state);
+  const districts = await fetchDistricts(parseFloat(lon), parseFloat(lat));
 
-  return NextResponse.json({ results }, { status: 200 });
+  const stateElections = stateName
+    ? await scrapeStateElections(stateName, new Date().getFullYear(), {
+        senate: districts.stateSenate,
+        house: districts.stateHouse,
+      })
+    : null;
+
+  const fecData = await fetchCandidatesInDistrict(state, districts.congressional ?? "00");
+
+  // Map FEC candidates: rename "P" (presidential) → "E" (executive) for unified office codes
+  const fecCandidates: Candidate[] = (fecData.results ?? []).map((c: Candidate) => ({
+    ...c,
+    office: c.office === ("P" as Candidate["office"]) ? "E" : c.office,
+    office_full: c.office === ("P" as Candidate["office"]) ? "President of the United States" : c.office_full,
+    level: "federal" as const,
+  }));
+
+  const stateCandidates = stateElections
+    ? stateRacesToCandidates(stateElections.races, state)
+    : [];
+
+  const [federal, stateResults] = await Promise.all([
+    enrichCandidates(fecCandidates),
+    enrichCandidates(stateCandidates),
+  ]);
+
+  return NextResponse.json({ federal, state: stateResults }, { status: 200 });
 }
