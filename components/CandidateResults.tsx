@@ -224,8 +224,9 @@ function LevelBlock({ title, children }: { title: string; children: React.ReactN
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
-        <span className="text-xs font-bold uppercase tracking-widest text-ink-ghost">{title}</span>
-        <div className="flex-1 h-px bg-groove" />
+        <div className="h-5 w-1 rounded-full bg-accent" />
+        <span className="text-sm font-bold tracking-tight text-ink">{title}</span>
+        <div className="flex-1 h-px bg-edge" />
       </div>
       {children}
     </div>
