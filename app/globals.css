@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --canvas:    #f8f9fb;
+  --surface:   #ffffff;
+  --card:      #ffffff;
+  --edge:      #e2e5ea;
+  --groove:    #f0f2f5;
+  --ink:       #0f172a;
+  --ink-dim:   #475569;
+  --ink-faint: #94a3b8;
+  --ink-ghost: #cbd5e1;
+  --accent:    #b91c1c;
+  --accent-soft: #fef2f2;
+  --accent-blue: #1e3a5f;
+  --radius:    0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas:    #0c1021;
+    --surface:   #131829;
+    --card:      #171d30;
+    --edge:      #1e2640;
+    --groove:    #1a2035;
+    --ink:       #e8ecf4;
+    --ink-dim:   #8b95ad;
+    --ink-faint: #4e5872;
+    --ink-ghost: #2a3350;
+    --accent:    #ef4444;
+    --accent-soft: rgba(239, 68, 68, 0.08);
+    --accent-blue: #3b6fa0;
+    --radius:    0.75rem;
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-canvas:      var(--canvas);
+  --color-surface:     var(--surface);
+  --color-card:        var(--card);
+  --color-edge:        var(--edge);
+  --color-groove:      var(--groove);
+  --color-ink:         var(--ink);
+  --color-ink-dim:     var(--ink-dim);
+  --color-ink-faint:   var(--ink-faint);
+  --color-ink-ghost:   var(--ink-ghost);
+  --color-accent:      var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-blue: var(--accent-blue);
+  --radius-card:       var(--radius);
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+/* Mapbox search styling overrides */
+.mapboxgl-ctrl-geocoder {
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--edge) !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+  background: var(--surface) !important;
+  font-family: var(--font-geist-sans), system-ui, sans-serif !important;
+  min-height: 48px !important;
+}
+
+.mapboxgl-ctrl-geocoder input {
+  color: var(--ink) !important;
+  font-size: 0.875rem !important;
+}
+
+.mapboxgl-ctrl-geocoder input::placeholder {
+  color: var(--ink-faint) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mapboxgl-ctrl-geocoder {
+    background: var(--card) !important;
+    border-color: var(--edge) !important;
+  }
+  .mapboxgl-ctrl-geocoder input {
+    color: var(--ink) !important;
+  }
+  .mapboxgl-ctrl-geocoder .suggestions {
+    background: var(--card) !important;
+    border-color: var(--edge) !important;
+  }
+  .mapboxgl-ctrl-geocoder .suggestions > li > a {
+    color: var(--ink) !important;
+  }
+  .mapboxgl-ctrl-geocoder .suggestions > .active > a {
+    background: var(--groove) !important;
+  }
+}
