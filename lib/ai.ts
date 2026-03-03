@@ -29,8 +29,8 @@ const CRITERIA_BLOCK = ISSUES.map(
 
 const ISSUE_FIELDS = ISSUES.map((issue) =>
   [
-    `- "${issue.key}_stance": Using the [${issue.key}] criteria above as your guide, describe the candidate's documented positions in natural prose, explicitly addressing each point. Do not quote or reference the criteria — just describe where the candidate stands on each point. Set to null if you have no reliable information.`,
-    `- "${issue.key}_score": An integer 1-10 rating of how aligned the candidate's positions are with the [${issue.key}] criteria above (10 = strongly agrees with all points, 1 = strongly opposes all points). Set to null if you have no reliable information.`,
+    `- "${issue.key}_stance": Write 1–2 sentences of flowing prose (no lists, no numbered points, no JSON). Describe what the candidate has actually said or done on this topic — name specific votes, bills, or statements. Address each of the criteria in [${issue.key}] by describing their position on that issue directly, not by referring to criterion numbers (the reader cannot see the criteria). Example: "Has called for deporting all illegal immigrants, not just criminals, and supports ending birthright citizenship, but has not taken a position on a legal immigration moratorium and generally supports H-1B visas." Set to null only if this candidate has no documented public record on this topic.`,
+    `- "${issue.key}_score": An integer 1–10 following the scoring rules in [${issue.key}] exactly. Apply any hard caps or automatic FAILs as specified. Base the score only on the candidate's actual documented positions — do not guess based on party affiliation or district alone. Set to null if the candidate has no documented positions on this topic.`,
   ].join("\n")
 ).join("\n");
 
@@ -50,7 +50,7 @@ ${CRITERIA_BLOCK}
 
 Each object must include:
 - "candidate_id": the exact ID provided
-- "summary": A 1-2 sentence neutral overview of the candidate's general political positions.
+- "summary": 2–3 sentences. Start with a brief description of the candidate's general political identity, then explicitly call out the most notable ways they align with or diverge from the evaluation criteria — for example, if they support Israel, say so; if they only support deporting criminals rather than all illegal immigrants, say so. Be specific, not vague.
 ${ISSUE_FIELDS}
 
 Candidates:
@@ -61,9 +61,19 @@ ${candidateList}`;
     contents: prompt,
     config: {
       responseMimeType: "application/json",
+      temperature: 0.5,
     },
   });
 
-  const results: (CandidateAnalysis & { candidate_id: string })[] = JSON.parse(response.text ?? "[]");
+  const raw: (CandidateAnalysis & { candidate_id: string })[] = JSON.parse(response.text ?? "[]");
+  const results = raw.map((r) => {
+    const rounded = { ...r } as Record<string, unknown>;
+    for (const key of Object.keys(rounded)) {
+      if (key.endsWith("_score") && typeof rounded[key] === "number") {
+        rounded[key] = Math.round(rounded[key] as number);
+      }
+    }
+    return rounded as CandidateAnalysis & { candidate_id: string };
+  });
   return new Map(results.map((r) => [r.candidate_id, r]));
 }

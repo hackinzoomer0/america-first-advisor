@@ -7,33 +7,45 @@ export interface Issue {
 export const ISSUES: Issue[] = [
   {
     key: "immigration",
-    standard: "We need mass deportations of illegal immigrants. We should end birthright citizenship. " +
-      "We should end asylum and refugee programs. Additionally, we need a full immigration moratorium. IMPORTANT: " +
-      "The value for this should be based 70% on the candidate's stance on mass deportations, restricting legal " + 
-      "immigration, and restricting H-1B visas.",
+    standard:
+      `Evaluate the candidate against each of the following criteria:
+1. Supports mass deportation of ALL illegal immigrants — not just criminal aliens, but all or nearly all. Candidates who only support deporting criminals FAIL this criterion.
+2. Supports ending birthright citizenship.
+3. Opposes H-1B and other work visa programs, and supports broader restrictions on legal immigration levels.
+Scoring: 10 = all three met. Deduct 3 points for each unmet criterion. A candidate who supports deporting criminals only (not all illegal immigrants) scores no higher than 4 on criterion 1 alone.`,
     weight: 0.30,
   },
   {
     key: "foreign_policy",
-    standard: "America should only intervene internationally where it directly benefits us. We should use " +
-      "foreign aid as a strategic tool rather than a handout. We should re-evaluate international commitments " +
-      "to validate that they're in our best interest. America should not support Israel militarily or financially. " +
-      "We should not have any special relationship with Israel. We should not have a pro-Israel foreign policy. " + 
-      "IMPORTANT: 80% of the value for this should be based on the candidate's Israel stance, not their general foreign policy stance.",
-      weight: 0.45,
+    standard:
+      `Evaluate the candidate against each of the following criteria:
+1. Opposes U.S. military aid to Israel — any vote for or endorsement of military aid to Israel is an automatic FAIL on this criterion.
+2. Opposes U.S. financial aid to Israel — any support for financial assistance to Israel is an automatic FAIL on this criterion.
+3. Does not advocate for a "special relationship" with Israel or describe Israel as a key U.S. ally.
+4. Opposes foreign military interventionism unless there is a clear, direct benefit to the United States — not a vague or speculative benefit, but a concrete one.
+5. Treats foreign aid as a conditional, strategic tool tied to direct U.S. interest — not as a moral obligation or default.
+Scoring: 10 = all five met. Criteria 1–3 are the most important: a candidate who supports Israel militarily or financially cannot score above 3, regardless of their other positions. Each failure on criteria 4–5 deducts 1–2 points.`,
+    weight: 0.45,
   },
   {
     key: "social_policy",
-    standard: "Abortion should be illegal at a federal level, and it should not be a states issue. " +
-      "Exceptions should be extremely limited, if they exist at all. Homosexuality should have a negative stigma in society. " +
-      "We should overturn gay marriage. Transgenderism should be illegal regardless of age.",
+    standard:
+      `Evaluate the candidate against each of the following criteria:
+1. Supports a federal abortion ban — not a state-level approach. Candidates who say abortion is a "states' rights" issue FAIL this criterion.
+2. Supports extremely limited or no exceptions to an abortion ban (e.g., no rape or incest exceptions, or at most a narrow life-of-the-mother exception).
+3. Opposes same-sex marriage.
+4. Supports laws prohibiting transgenderism at any age — medical, legal, or social.
+Scoring: 10 = all four met. Deduct 2–3 points for each unmet criterion.`,
   },
   {
     key: "religion",
-    standard: "America is a Christian nation. We should have Christian prayers in public schools. We should " +
-      "not allow non-Christians to hold positions of power. America is explicitly Christian, not Judeo-Christian. " +
-      "IMPORTANT: 40% of the value for this should be based on explicit Christian nationalism, not general religiosity.",
-  }
+    standard:
+      `Evaluate the candidate against each of the following criteria:
+1. Explicitly identifies America as a Christian nation — not "Judeo-Christian," not broadly religious, but explicitly and specifically Christian.
+2. Opposes non-Christians holding positions of significant political power.
+3. Uses explicitly Christian nationalist language or framing — general religiosity or references to "faith" or "God" without specifically Christian framing do NOT meet this criterion.
+Scoring: 10 = all three met. A candidate who is merely religious or uses generic faith language scores no higher than 3. Deduct 3 points for each unmet criterion.`,
+  },
 ];
 
 // Build the weight map once: explicit weights first, then distribute remainder evenly.
