@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCandidateDetailsBatch, upsertCandidateDetails, updateTotalScore, type CandidateAiDetails } from "@/lib/db";
+import {
+  getCandidateDetailsBatch,
+  upsertCandidateDetails,
+  updateScores,
+  updateTotalScore,
+  type CandidateAiDetails,
+} from "@/lib/db";
+import { researchCandidates } from "@/lib/perplexity";
 import { analyzeCandidatesBatch } from "@/lib/ai";
 import { ISSUES, computeTotalScore } from "@/lib/issues";
 import type { Candidate } from "@/types/candidate";
 
 const BLACKLIST_MSG = "This candidate has been blacklisted.";
+
+// Research is expensive (Perplexity calls) — refresh every 6 months.
+const RESEARCH_STALE_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+// Scores are cheap to recompute from cached research — refresh every 3 months
+// or whenever criteria change (future: criteria hash).
+const SCORE_STALE_MS = 3 * 30 * 24 * 60 * 60 * 1000;
 
 async function fetchDistrict(longitude: number, latitude: number): Promise<string | null> {
   const params = new URLSearchParams({
@@ -49,13 +62,17 @@ async function fetchCandidatesInDistrict(state: string, district: string) {
   return await res.json();
 }
 
-const THREE_MONTHS_AGO_MS = 3 * 30 * 24 * 60 * 60 * 1000;
-
 async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]> {
   const detailsMap = await getCandidateDetailsBatch(fecCandidates.map((c) => c.candidate_id));
 
-  const staleThreshold = Date.now() - THREE_MONTHS_AGO_MS;
-  const needsAnalysis: Candidate[] = [];
+  const now = Date.now();
+  const researchStaleThreshold = now - RESEARCH_STALE_MS;
+  const scoreStaleThreshold = now - SCORE_STALE_MS;
+
+  // Candidates that need fresh Perplexity research
+  const needsResearch: Candidate[] = [];
+  // Candidates that have fresh research but need re-scoring (e.g. criteria changed)
+  const needsScoreOnly: Candidate[] = [];
   const scoreUpdates: Promise<void>[] = [];
 
   const withDbData: Candidate[] = fecCandidates.map((c) => {
@@ -74,18 +91,27 @@ async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]
         summary: BLACKLIST_MSG,
         total_score: 0,
         blacklist: true,
-        last_updated: details.last_updated,
+        last_updated: details.score_last_updated,
       } as Candidate;
     }
 
-    const isStale = details && new Date(details.last_updated).getTime() < staleThreshold;
-    if (!details || isStale) needsAnalysis.push(c);
+    const researchStale =
+      !details?.research_last_updated ||
+      new Date(details.research_last_updated).getTime() < researchStaleThreshold;
+
+    const scoreStale =
+      !details?.score_last_updated ||
+      new Date(details.score_last_updated).getTime() < scoreStaleThreshold;
+
+    if (researchStale) {
+      needsResearch.push(c);
+    } else if (scoreStale) {
+      needsScoreOnly.push(c);
+    }
 
     const liveScore = details ? computeTotalScore(details) : null;
 
-    // If weights changed, the stored total_score may be stale for fresh records.
-    // Queue a lightweight update without blocking the response.
-    if (details && !isStale && liveScore !== null && liveScore !== details.total_score) {
+    if (details && !researchStale && !scoreStale && liveScore !== null && liveScore !== details.total_score) {
       scoreUpdates.push(updateTotalScore(c.candidate_id, liveScore));
     }
 
@@ -102,22 +128,46 @@ async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]
       religion_score: details?.religion_score ?? null,
       total_score: liveScore,
       blacklist: false,
-      last_updated: details?.last_updated ?? null,
+      last_updated: details?.score_last_updated ?? null,
     };
   });
 
-  // Fire score patches without blocking
   if (scoreUpdates.length > 0) Promise.all(scoreUpdates).catch(console.error);
 
-  if (needsAnalysis.length === 0) return withDbData;
+  // --- Candidates needing full refresh (research + scoring) ---
+  if (needsResearch.length > 0) {
+    const researchMap = await researchCandidates(needsResearch);
+    const analysisMap = await analyzeCandidatesBatch(needsResearch, researchMap);
 
-  const analysisMap = await analyzeCandidatesBatch(needsAnalysis);
+    await Promise.all(
+      needsResearch.map((candidate) => {
+        const analysis = analysisMap.get(candidate.candidate_id);
+        const research = researchMap.get(candidate.candidate_id);
+        if (!analysis) return;
+        const aiDetails: CandidateAiDetails = {
+          summary: analysis.summary,
+          immigration_research: research?.immigration_research ?? null,
+          immigration_position: analysis.immigration_stance,
+          immigration_score: analysis.immigration_score,
+          foreign_policy_research: research?.foreign_policy_research ?? null,
+          foreign_policy_position: analysis.foreign_policy_stance,
+          foreign_policy_score: analysis.foreign_policy_score,
+          social_policy_research: research?.social_policy_research ?? null,
+          social_policy_position: analysis.social_policy_stance,
+          social_policy_score: analysis.social_policy_score,
+          religion_research: research?.religion_research ?? null,
+          religion_position: analysis.religion_stance,
+          religion_score: analysis.religion_score,
+          total_score: computeTotalScore(analysis),
+        };
+        return upsertCandidateDetails(candidate.candidate_id, candidate.name, aiDetails);
+      })
+    );
 
-  await Promise.all(
-    needsAnalysis.map((candidate) => {
-      const analysis = analysisMap.get(candidate.candidate_id);
-      if (!analysis) return;
-      const aiDetails: CandidateAiDetails = {
+    for (const c of withDbData) {
+      const analysis = analysisMap.get(c.candidate_id);
+      if (!analysis) continue;
+      Object.assign(c, {
         summary: analysis.summary,
         immigration_position: analysis.immigration_stance,
         immigration_score: analysis.immigration_score,
@@ -128,29 +178,71 @@ async function enrichCandidates(fecCandidates: Candidate[]): Promise<Candidate[]
         religion_position: analysis.religion_stance,
         religion_score: analysis.religion_score,
         total_score: computeTotalScore(analysis),
-      };
-      return upsertCandidateDetails(candidate.candidate_id, candidate.name, aiDetails);
-    })
-  );
+        last_updated: new Date(),
+      });
+    }
+  }
 
-  return withDbData.map((c) => {
-    const analysis = analysisMap.get(c.candidate_id);
-    if (!analysis) return c;
-    return {
-      ...c,
-      summary: analysis.summary,
-      immigration_position: analysis.immigration_stance,
-      immigration_score: analysis.immigration_score,
-      foreign_policy_position: analysis.foreign_policy_stance,
-      foreign_policy_score: analysis.foreign_policy_score,
-      social_policy_position: analysis.social_policy_stance,
-      social_policy_score: analysis.social_policy_score,
-      religion_position: analysis.religion_stance,
-      religion_score: analysis.religion_score,
-      total_score: computeTotalScore(analysis),
-      last_updated: new Date(),
-    };
-  });
+  // --- Candidates with fresh research but stale scores (re-score only) ---
+  if (needsScoreOnly.length > 0) {
+    // Build a researchMap from the cached DB data
+    const cachedResearchMap = new Map(
+      needsScoreOnly.map((c) => {
+        const details = detailsMap.get(c.candidate_id)!;
+        return [
+          c.candidate_id,
+          {
+            candidate_id: c.candidate_id,
+            immigration_research: details.immigration_research,
+            foreign_policy_research: details.foreign_policy_research,
+            social_policy_research: details.social_policy_research,
+            religion_research: details.religion_research,
+          },
+        ];
+      })
+    );
+
+    const analysisMap = await analyzeCandidatesBatch(needsScoreOnly, cachedResearchMap);
+
+    await Promise.all(
+      needsScoreOnly.map((candidate) => {
+        const analysis = analysisMap.get(candidate.candidate_id);
+        if (!analysis) return;
+        return updateScores(candidate.candidate_id, candidate.name, {
+          summary: analysis.summary,
+          immigration_position: analysis.immigration_stance,
+          immigration_score: analysis.immigration_score,
+          foreign_policy_position: analysis.foreign_policy_stance,
+          foreign_policy_score: analysis.foreign_policy_score,
+          social_policy_position: analysis.social_policy_stance,
+          social_policy_score: analysis.social_policy_score,
+          religion_position: analysis.religion_stance,
+          religion_score: analysis.religion_score,
+          total_score: computeTotalScore(analysis),
+        });
+      })
+    );
+
+    for (const c of withDbData) {
+      const analysis = analysisMap.get(c.candidate_id);
+      if (!analysis) continue;
+      Object.assign(c, {
+        summary: analysis.summary,
+        immigration_position: analysis.immigration_stance,
+        immigration_score: analysis.immigration_score,
+        foreign_policy_position: analysis.foreign_policy_stance,
+        foreign_policy_score: analysis.foreign_policy_score,
+        social_policy_position: analysis.social_policy_stance,
+        social_policy_score: analysis.social_policy_score,
+        religion_position: analysis.religion_stance,
+        religion_score: analysis.religion_score,
+        total_score: computeTotalScore(analysis),
+        last_updated: new Date(),
+      });
+    }
+  }
+
+  return withDbData;
 }
 
 export async function GET(req: NextRequest) {

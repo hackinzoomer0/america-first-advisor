@@ -1,11 +1,12 @@
-import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 import { ISSUES } from "@/lib/issues";
+import type { CandidateResearch } from "@/lib/perplexity";
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY is not set");
+if (!process.env.CLAUDE_API_KEY) {
+  throw new Error("CLAUDE_API_KEY is not set");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
 
 const OFFICE_LABELS: Record<string, string> = {
   S: "U.S. Senate",
@@ -28,49 +29,63 @@ interface CandidateInput {
   state: string;
 }
 
+// Build static blocks once — reused across every batch call.
 const CRITERIA_BLOCK = ISSUES.map(
   (issue) => `[${issue.key}]\n${issue.standard}`
 ).join("\n\n");
 
 const ISSUE_FIELDS = ISSUES.map((issue) =>
   [
-    `- "${issue.key}_stance": Write 1–2 sentences of flowing prose (no lists, no numbered points, no JSON). Describe what the candidate has actually said or done on this topic — name specific votes, bills, or statements. Address each of the criteria in [${issue.key}] by describing their position on that issue directly, not by referring to criterion numbers (the reader cannot see the criteria). Example: "Has called for deporting all illegal immigrants, not just criminals, and supports ending birthright citizenship, but has not taken a position on a legal immigration moratorium and generally supports H-1B visas." Set to null only if this candidate has no documented public record on this topic.`,
-    `- "${issue.key}_score": An integer 1–10 following the scoring rules in [${issue.key}] exactly. Apply any hard caps or automatic FAILs as specified. Base the score only on the candidate's actual documented positions — do not guess based on party affiliation or district alone. Set to null if the candidate has no documented positions on this topic.`,
+    `- "${issue.key}_stance": 1–2 sentences of prose. Describe what the candidate has actually said or done — name specific votes, bills, or statements. Address each criterion in [${issue.key}] directly. null if no documented record.`,
+    `- "${issue.key}_score": Integer 1–10 per [${issue.key}] rules. Apply hard caps/FAILs exactly. null if no documented positions.`,
   ].join("\n")
 ).join("\n");
 
 export async function analyzeCandidatesBatch(
-  candidates: CandidateInput[]
+  candidates: CandidateInput[],
+  researchMap: Map<string, CandidateResearch>
 ): Promise<Map<string, CandidateAnalysis>> {
   if (candidates.length === 0) return new Map();
 
-  const candidateList = candidates
-    .map((c) => `- ID: ${c.candidate_id} | ${c.name} | ${OFFICE_LABELS[c.office]} | ${c.state}`)
-    .join("\n");
+  const candidateBlocks = candidates
+    .map((c) => {
+      const research = researchMap.get(c.candidate_id);
+      const researchBlock = ISSUES.map((issue) => {
+        const key = `${issue.key}_research` as keyof CandidateResearch;
+        const text = research?.[key] ?? null;
+        return `[Research: ${issue.key}]\n${text ?? "No research available."}`;
+      }).join("\n\n");
 
-  const prompt = `You are a neutral political analyst. Analyze the following political candidates and return a JSON array — one object per candidate, in the same order.
+      return (
+        `CANDIDATE: ${c.name} | ${OFFICE_LABELS[c.office]} | ${c.state} | ID: ${c.candidate_id}\n` +
+        researchBlock
+      );
+    })
+    .join("\n\n---\n\n");
 
-EVALUATION CRITERIA:
-${CRITERIA_BLOCK}
+  const prompt =
+    `You are a neutral political analyst. Based ONLY on the research provided for each candidate, ` +
+    `return a JSON array — one object per candidate, in the same order.\n\n` +
+    `EVALUATION CRITERIA:\n${CRITERIA_BLOCK}\n\n` +
+    `Each object must include:\n` +
+    `- "candidate_id": the exact ID provided\n` +
+    `- "summary": 2–3 sentences describing the candidate's general positions in plain language. Do NOT mention criterion numbers, cite specific incidents, or frame things as "unmet criteria". Instead, describe what the candidate actually believes — e.g. "generally opposes foreign aid but has no documented position on aid to Israel". Call out gaps in the record plainly.\n` +
+    `${ISSUE_FIELDS}\n\n` +
+    `CANDIDATES:\n${candidateBlocks}`;
 
-Each object must include:
-- "candidate_id": the exact ID provided
-- "summary": 2–3 sentences. Start with a brief description of the candidate's general political identity, then explicitly call out the most notable ways they align with or diverge from the evaluation criteria — for example, if they support Israel, say so; if they only support deporting criminals rather than all illegal immigrants, say so. Be specific, not vague.
-${ISSUE_FIELDS}
-
-Candidates:
-${candidateList}`;
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      temperature: 0.5,
-    },
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: Math.min(8192, candidates.length * 600 + 512),
+    messages: [{ role: "user", content: prompt }],
   });
 
-  const raw: (CandidateAnalysis & { candidate_id: string })[] = JSON.parse(response.text ?? "[]");
+  const textBlock = message.content.find((b) => b.type === "text");
+  const text = textBlock?.text ?? "[]";
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  const raw: (CandidateAnalysis & { candidate_id: string })[] = JSON.parse(
+    jsonMatch?.[0] ?? "[]"
+  );
+
   const results = raw.map((r) => {
     const rounded = { ...r } as Record<string, unknown>;
     for (const key of Object.keys(rounded)) {
@@ -80,5 +95,6 @@ ${candidateList}`;
     }
     return rounded as CandidateAnalysis & { candidate_id: string };
   });
+
   return new Map(results.map((r) => [r.candidate_id, r]));
 }
