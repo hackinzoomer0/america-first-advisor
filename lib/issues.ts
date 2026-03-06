@@ -1,5 +1,9 @@
 export interface Issue {
   key: string;
+  // Broad subtopics for evidence gathering — what Perplexity should research.
+  // These are independent of the scoring standard so that changing thresholds
+  // (e.g. user-defined criteria) doesn't require re-fetching research.
+  researchTopics: string[];
   standard: string;
   weight?: number; // explicit weight; unweighted issues share the remainder equally
 }
@@ -7,28 +11,42 @@ export interface Issue {
 export const ISSUES: Issue[] = [
   {
     key: "immigration",
+    researchTopics: [
+      "deportation and immigration enforcement policy (criminal aliens vs. all illegal immigrants)",
+      "birthright citizenship",
+      "H-1B and other work visa programs",
+      "legal immigration levels and caps",
+    ],
     standard:
       `Evaluate the candidate against each of the following criteria:
 1. Supports mass deportation of ALL illegal immigrants — not just criminal aliens, but all or nearly all. Candidates who only support deporting criminals FAIL this criterion.
 2. Supports ending birthright citizenship.
 3. Opposes H-1B and other work visa programs, and supports broader restrictions on legal immigration levels.
 Scoring: 10 = all three met. Deduct 3 points for each unmet criterion. A candidate who supports deporting criminals only (not all illegal immigrants) scores no higher than 4 on criterion 1 alone.`,
-    weight: 0.30,
+    weight: 0.25,
   },
   {
     key: "foreign_policy",
+    researchTopics: [
+      "Iran policy and support for military action or war against Iran",
+      "U.S. financial aid to Israel specifically, and foreign aid policy generally (including any stated opposition to all foreign aid)",
+      "military interventionism and overseas military commitments",
+    ],
     standard:
       `Evaluate the candidate against each of the following criteria:
-1. Opposes U.S. military aid to Israel — any vote for or endorsement of military aid to Israel is an automatic FAIL on this criterion.
-2. Opposes U.S. financial aid to Israel — any support for financial assistance to Israel is an automatic FAIL on this criterion.
-3. Does not advocate for a "special relationship" with Israel or describe Israel as a key U.S. ally.
-4. Opposes foreign military interventionism unless there is a clear, direct benefit to the United States — not a vague or speculative benefit, but a concrete one.
-5. Treats foreign aid as a conditional, strategic tool tied to direct U.S. interest — not as a moral obligation or default.
-Scoring: 10 = all five met. Criteria 1–3 are the most important: a candidate who supports Israel militarily or financially cannot score above 3, regardless of their other positions. Each failure on criteria 4–5 deducts 1–2 points.`,
-    weight: 0.45,
+1. Opposes war with Iran — a candidate who supports, hedges on, or has endorsed military action against Iran FAILS this criterion.
+2. Opposes U.S. financial aid to Israel — any support for financial assistance to Israel is an automatic FAIL. A candidate who explicitly opposes all foreign aid with no Israel exception meets this criterion.
+3. Opposes foreign military interventionism unless there is a clear, direct benefit to the United States — not a vague or speculative benefit, but a concrete one.
+Scoring: Criterion 1 (Iran war) accounts for 50% of the score (5 points). A candidate who fails criterion 1 cannot score above 5. Of the remaining 5 points: criterion 2 (financial aid to Israel) is worth 1.5 points and criterion 3 (interventionism) is worth 3.5 points. 10 = all three met. Deduct accordingly for each unmet criterion.`,
+    weight: 0.55,
   },
   {
     key: "social_policy",
+    researchTopics: [
+      "abortion policy (federal vs. state approach, and any exceptions)",
+      "same-sex marriage",
+      "transgender policy",
+    ],
     standard:
       `Evaluate the candidate against each of the following criteria:
 1. Supports a federal abortion ban — not a state-level approach. Candidates who say abortion is a "states' rights" issue FAIL this criterion.
@@ -39,6 +57,12 @@ Scoring: 10 = all four met. Deduct 2–3 points for each unmet criterion.`,
   },
   {
     key: "religion",
+    researchTopics: [
+      "America as a Christian nation",
+      "non-Christians holding political office",
+      "Christian nationalist language and framing",
+      "religion in politics generally",
+    ],
     standard:
       `Evaluate the candidate against each of the following criteria:
 1. Explicitly identifies America as a Christian nation — not "Judeo-Christian," not broadly religious, but explicitly and specifically Christian.
