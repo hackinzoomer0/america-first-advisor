@@ -6,6 +6,7 @@ import type { Candidate } from "@/types/candidate";
 import {
   CandidateCard,
   CandidateDetail,
+  MatchRingSmall,
   ChevronIcon,
   formatName,
   partyStyle,
@@ -35,47 +36,17 @@ function groupByParty(candidates: Candidate[]): [string, string, Candidate[]][] 
     .map(([party, [partyFull, cs]]) => [party, partyFull, cs]);
 }
 
-function ScoreRingSmall({ score }: { score: number }) {
-  const size = 44;
-  const radius = (size - 5) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = (score / 10) * circumference;
-  const recommend = score >= 7;
-
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--groove)" strokeWidth={2.5} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={recommend ? "#22c55e" : "#ef4444"}
-          strokeWidth={2.5}
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference - progress}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className={`absolute text-xs font-bold tabular-nums ${recommend ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-        {score.toFixed(1)}
-      </span>
-    </div>
-  );
-}
-
 function TopCandidatePreview({ candidates, label = "Top candidate" }: { candidates: Candidate[]; label?: string }) {
   const [expanded, setExpanded] = useState(false);
 
   const top = [...candidates]
-    .filter((c) => c.total_score !== null)
-    .sort((a, b) => (b.total_score ?? 0) - (a.total_score ?? 0))[0];
+    .filter((c) => c.match_score !== null)
+    .sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0))[0];
 
-  if (!top || top.total_score === null) return null;
+  if (!top || top.match_score === null) return null;
 
-  const score = top.total_score;
-  const recommend = score >= 7;
+  const score = top.match_score;
+  const isGood = score >= 70;
   const style = partyStyle(top.party);
 
   return (
@@ -85,7 +56,7 @@ function TopCandidatePreview({ candidates, label = "Top candidate" }: { candidat
         className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-groove/50"
       >
         <div className="flex items-center gap-3.5">
-          <ScoreRingSmall score={score} />
+          <MatchRingSmall score={score} />
           <div className="flex flex-col gap-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
               {label}
@@ -103,12 +74,12 @@ function TopCandidatePreview({ candidates, label = "Top candidate" }: { candidat
         <div className="flex items-center gap-3">
           <span
             className={`rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide ${
-              recommend
+              isGood
                 ? "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400"
                 : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400"
             }`}
           >
-            {recommend ? "Vote" : "Withhold"}
+            {isGood ? "Strong Match" : score >= 40 ? "Partial Match" : "Low Match"}
           </span>
           <ChevronIcon expanded={expanded} />
         </div>
@@ -127,7 +98,7 @@ function PartyGroup({ party, partyFull, candidates }: { party: string; partyFull
   const style = partyStyle(party);
 
   const sorted = [...candidates].sort(
-    (a, b) => (b.total_score ?? -Infinity) - (a.total_score ?? -Infinity)
+    (a, b) => (b.match_score ?? -Infinity) - (a.match_score ?? -Infinity)
   );
 
   return (

@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { ISSUES } from "@/lib/issues";
-import type { CandidateResearch } from "@/lib/perplexity";
+import { ISSUES } from "@/lib/issues_new";
 
 if (!process.env.CLAUDE_API_KEY) {
   throw new Error("CLAUDE_API_KEY is not set");
@@ -14,14 +13,6 @@ const OFFICE_LABELS: Record<string, string> = {
   P: "President of the United States",
 };
 
-export type CandidateAnalysis = {
-  summary: string;
-} & {
-  [K in `${string}_stance`]: string | null;
-} & {
-  [K in `${string}_score`]: number | null;
-};
-
 interface CandidateInput {
   candidate_id: string;
   name: string;
@@ -29,72 +20,80 @@ interface CandidateInput {
   state: string;
 }
 
-// Build static blocks once — reused across every batch call.
-const CRITERIA_BLOCK = ISSUES.map(
-  (issue) => `[${issue.key}]\n${issue.standard}`
-).join("\n\n");
+export type PositionMap = Record<string, number | null>;
 
-const ISSUE_FIELDS = ISSUES.map((issue) =>
-  [
-    `- "${issue.key}_stance": 1–2 sentences of prose. Describe what the candidate has actually said or done — name specific votes, bills, or statements. Address each criterion in [${issue.key}] directly. null if no documented record.`,
-    `- "${issue.key}_score": Integer 1–10 per [${issue.key}] rules. Apply hard caps/FAILs exactly. null if no documented positions.`,
-  ].join("\n")
-).join("\n");
+const ISSUE_PROMPT = ISSUES.map((issue) => {
+  const positionsList = issue.positions
+    .map((p, i) => `  ${i}: "${p}"`)
+    .join("\n");
+  return `"${issue.key}" — ${issue.description}\nPositions:\n${positionsList}`;
+}).join("\n\n");
 
-export async function analyzeCandidatesBatch(
-  candidates: CandidateInput[],
-  researchMap: Map<string, CandidateResearch>
-): Promise<Map<string, CandidateAnalysis>> {
-  if (candidates.length === 0) return new Map();
+async function selectPositions(
+  candidate: CandidateInput,
+  research: string
+): Promise<PositionMap> {
+  const prompt = `You are analyzing a political candidate's positions based on research.
 
-  const candidateBlocks = candidates
-    .map((c) => {
-      const research = researchMap.get(c.candidate_id);
-      const researchBlock = ISSUES.map((issue) => {
-        const key = `${issue.key}_research` as keyof CandidateResearch;
-        const text = research?.[key] ?? null;
-        return `[Research: ${issue.key}]\n${text ?? "No research available."}`;
-      }).join("\n\n");
+Candidate: ${candidate.name} (${OFFICE_LABELS[candidate.office]}, ${candidate.state})
 
-      return (
-        `CANDIDATE: ${c.name} | ${OFFICE_LABELS[c.office]} | ${c.state} | ID: ${c.candidate_id}\n` +
-        researchBlock
-      );
-    })
-    .join("\n\n---\n\n");
+Research:
+${research}
 
-  const prompt =
-    `You are a neutral political analyst. Based ONLY on the research provided for each candidate, ` +
-    `return a JSON array — one object per candidate, in the same order.\n\n` +
-    `EVALUATION CRITERIA:\n${CRITERIA_BLOCK}\n\n` +
-    `Each object must include:\n` +
-    `- "candidate_id": the exact ID provided\n` +
-    `- "summary": 2–3 sentences describing the candidate's general positions in plain language. Do NOT mention criterion numbers, cite specific incidents, or frame things as "unmet criteria". Instead, describe what the candidate actually believes — e.g. "generally opposes foreign aid but has no documented position on aid to Israel". Call out gaps in the record plainly.\n` +
-    `${ISSUE_FIELDS}\n\n` +
-    `CANDIDATES:\n${candidateBlocks}`;
+For each issue below, select the index (0-based) of the position that best matches the candidate's documented stance. Return a JSON object mapping each issue key to its index. Use null if there is genuinely no documented position.
+
+Issues and positions:
+${ISSUE_PROMPT}
+
+Return only a JSON object like: {"iran_war": 3, "nato": 1, "deportations": null, ...}`;
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: Math.min(8192, candidates.length * 600 + 512),
+    max_tokens: 1024,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const textBlock = message.content.find((b) => b.type === "text");
-  const text = textBlock?.text ?? "[]";
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  const raw: (CandidateAnalysis & { candidate_id: string })[] = JSON.parse(
-    jsonMatch?.[0] ?? "[]"
+  const text = message.content[0].type === "text" ? message.content[0].text : "";
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error(`No JSON in Claude response for ${candidate.name}:`, text);
+    return Object.fromEntries(ISSUES.map((i) => [i.key, null]));
+  }
+
+  const raw = JSON.parse(jsonMatch[0]) as Record<string, number | null>;
+
+  // Clamp values to valid index range
+  const result: PositionMap = {};
+  for (const issue of ISSUES) {
+    const val = raw[issue.key];
+    if (val === null || val === undefined) {
+      result[issue.key] = null;
+    } else {
+      result[issue.key] = Math.max(0, Math.min(issue.positions.length - 1, Math.round(val)));
+    }
+  }
+
+  return result;
+}
+
+export async function analyzePositionsBatch(
+  candidates: CandidateInput[],
+  researchMap: Map<string, string | null>
+): Promise<Map<string, PositionMap>> {
+  const results = await Promise.all(
+    candidates.map(async (candidate) => {
+      const research = researchMap.get(candidate.candidate_id);
+      if (!research) {
+        return {
+          id: candidate.candidate_id,
+          positions: Object.fromEntries(ISSUES.map((i) => [i.key, null])) as PositionMap,
+        };
+      }
+      const positions = await selectPositions(candidate, research);
+      return { id: candidate.candidate_id, positions };
+    })
   );
 
-  const results = raw.map((r) => {
-    const rounded = { ...r } as Record<string, unknown>;
-    for (const key of Object.keys(rounded)) {
-      if (key.endsWith("_score") && typeof rounded[key] === "number") {
-        rounded[key] = Math.round(rounded[key] as number);
-      }
-    }
-    return rounded as CandidateAnalysis & { candidate_id: string };
-  });
-
-  return new Map(results.map((r) => [r.candidate_id, r]));
+  return new Map(results.map(({ id, positions }) => [id, positions]));
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { CandidateResults } from "@/components/CandidateResults";
+import { IssueQuiz } from "@/components/IssueQuiz";
 import type { Candidate } from "@/types/candidate";
 
 const AddressSearch = dynamic(
@@ -14,7 +15,7 @@ type LoadingPhase = "finding" | "analyzing" | null;
 
 const PHASE_LABELS: Record<Exclude<LoadingPhase, null>, string> = {
   finding: "Finding candidates in your district...",
-  analyzing: "Running AI analysis on candidates...",
+  analyzing: "Researching and analyzing candidates...",
 };
 
 function LoadingIndicator({ phase }: { phase: Exclude<LoadingPhase, null> }) {
@@ -29,7 +30,7 @@ function LoadingIndicator({ phase }: { phase: Exclude<LoadingPhase, null> }) {
           {PHASE_LABELS[phase]}
         </p>
         <p className="text-xs text-ink-faint">
-          This may take up to 30 seconds for first-time lookups
+          This may take up to 60 seconds for first-time lookups
         </p>
       </div>
     </div>
@@ -48,6 +49,7 @@ export default function Home() {
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [userPositions, setUserPositions] = useState<Record<string, number>>({});
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -56,12 +58,25 @@ export default function Home() {
     };
   }, []);
 
+  const handlePositionsChange = useCallback((positions: Record<string, number>) => {
+    setUserPositions(positions);
+  }, []);
+
   async function handleSubmit(location: { lat: number; lon: number; stateCode: string | null }) {
     setLoadingPhase("finding");
     phaseTimerRef.current = setTimeout(() => setLoadingPhase("analyzing"), 2500);
 
     try {
-      const res = await fetch(`/api/candidates?lat=${location.lat}&lon=${location.lon}&state=${location.stateCode}`);
+      const res = await fetch("/api/candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lat: location.lat,
+          lon: location.lon,
+          state: location.stateCode,
+          userPositions,
+        }),
+      });
       const data = await res.json();
       setCandidates(data.results ?? []);
       setHasSearched(true);
@@ -70,6 +85,8 @@ export default function Home() {
       setLoadingPhase(null);
     }
   }
+
+  const answeredCount = Object.keys(userPositions).length;
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
@@ -95,42 +112,35 @@ export default function Home() {
               <span className="text-accent">Advisor</span>
             </h1>
             <p className="max-w-lg text-base leading-relaxed text-ink-dim">
-              Enter your address to discover federal candidates in your district.
-              Each is scored against America First criteria and given a clear{" "}
-              <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                Vote
-              </span>{" "}
-              or{" "}
-              <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                Withhold
-              </span>{" "}
-              recommendation.
+              Tell us where you stand on the issues, then enter your address to find candidates
+              in your district that match your positions.
             </p>
-          </div>
-
-          {/* Key topics row */}
-          <div className="flex flex-wrap gap-2">
-            {["Immigration", "Foreign Policy", "Social Policy", "Religion"].map((topic) => (
-              <span
-                key={topic}
-                className="rounded-full border border-edge bg-surface px-3 py-1 text-xs font-medium text-ink-dim"
-              >
-                {topic}
-              </span>
-            ))}
           </div>
         </header>
 
         {/* Divider */}
         <div className="h-px bg-edge" />
 
+        {/* Quiz */}
+        <IssueQuiz onChange={handlePositionsChange} />
+
+        {/* Divider */}
+        <div className="h-px bg-edge" />
+
         {/* Search */}
-        <AddressSearch onSubmit={handleSubmit} loading={loadingPhase !== null} />
+        <div className="flex flex-col gap-3">
+          {answeredCount === 0 && (
+            <p className="text-xs text-ink-faint text-center">
+              Answer at least one question above to get personalized match scores.
+            </p>
+          )}
+          <AddressSearch onSubmit={handleSubmit} loading={loadingPhase !== null} />
+        </div>
 
         {/* First-search disclaimer */}
         {!hasSearched && loadingPhase === null && (
           <p className="text-xs text-ink-faint text-center">
-            First-time searches for a district may take up to 30 seconds — AI analysis runs on demand.
+            First-time searches for a district may take up to 60 seconds — AI research runs on demand.
           </p>
         )}
 

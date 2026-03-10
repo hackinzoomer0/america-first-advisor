@@ -6,152 +6,85 @@ if (!process.env.DATABASE_URL) {
 
 export const sql = neon(process.env.DATABASE_URL);
 
+// ── Candidate summary (name, summary, blacklist) ──────────────────────────────
+
 export interface CandidateSummary {
   candidate_id: string;
   name: string;
-  summary: string;
-  research_last_updated: Date | null;
-  score_last_updated: Date | null;
-  immigration_research: string | null;
-  immigration_position: string | null;
-  immigration_score: number | null;
-  foreign_policy_research: string | null;
-  foreign_policy_position: string | null;
-  foreign_policy_score: number | null;
-  social_policy_research: string | null;
-  social_policy_position: string | null;
-  social_policy_score: number | null;
-  religion_research: string | null;
-  religion_position: string | null;
-  religion_score: number | null;
-  total_score: number | null;
+  summary: string | null;
   blacklist: boolean;
+  positions_last_updated: Date | null;
 }
 
-export interface CandidateAiDetails {
-  summary: string;
-  immigration_research: string | null;
-  immigration_position: string | null;
-  immigration_score: number | null;
-  foreign_policy_research: string | null;
-  foreign_policy_position: string | null;
-  foreign_policy_score: number | null;
-  social_policy_research: string | null;
-  social_policy_position: string | null;
-  social_policy_score: number | null;
-  religion_research: string | null;
-  religion_position: string | null;
-  religion_score: number | null;
-  total_score: number | null;
-}
-
-/** Full upsert — updates both research and scores. */
-export async function upsertCandidateDetails(
+export async function upsertCandidateSummary(
   candidateId: string,
   name: string,
-  details: CandidateAiDetails
+  summary: string | null
 ): Promise<void> {
   await sql`
-    INSERT INTO candidate (
-      candidate_id, name, summary,
-      immigration_research, immigration_position, immigration_score,
-      foreign_policy_research, foreign_policy_position, foreign_policy_score,
-      social_policy_research, social_policy_position, social_policy_score,
-      religion_research, religion_position, religion_score,
-      total_score, research_last_updated, score_last_updated
-    ) VALUES (
-      ${candidateId}, ${name}, ${details.summary},
-      ${details.immigration_research}, ${details.immigration_position}, ${details.immigration_score},
-      ${details.foreign_policy_research}, ${details.foreign_policy_position}, ${details.foreign_policy_score},
-      ${details.social_policy_research}, ${details.social_policy_position}, ${details.social_policy_score},
-      ${details.religion_research}, ${details.religion_position}, ${details.religion_score},
-      ${details.total_score}, NOW(), NOW()
-    )
+    INSERT INTO candidate (candidate_id, name, summary, positions_last_updated)
+    VALUES (${candidateId}, ${name}, ${summary}, NOW())
     ON CONFLICT (candidate_id) DO UPDATE SET
       name = EXCLUDED.name,
       summary = EXCLUDED.summary,
-      immigration_research = EXCLUDED.immigration_research,
-      immigration_position = EXCLUDED.immigration_position,
-      immigration_score = EXCLUDED.immigration_score,
-      foreign_policy_research = EXCLUDED.foreign_policy_research,
-      foreign_policy_position = EXCLUDED.foreign_policy_position,
-      foreign_policy_score = EXCLUDED.foreign_policy_score,
-      social_policy_research = EXCLUDED.social_policy_research,
-      social_policy_position = EXCLUDED.social_policy_position,
-      social_policy_score = EXCLUDED.social_policy_score,
-      religion_research = EXCLUDED.religion_research,
-      religion_position = EXCLUDED.religion_position,
-      religion_score = EXCLUDED.religion_score,
-      total_score = EXCLUDED.total_score,
-      research_last_updated = NOW(),
-      score_last_updated = NOW()
+      positions_last_updated = NOW()
   `;
 }
 
-/** Lightweight score-only update — reuses existing research, does not touch research_last_updated. */
-export async function updateScores(
-  candidateId: string,
-  name: string,
-  details: Omit<CandidateAiDetails, `${string}_research`>
-): Promise<void> {
-  await sql`
-    INSERT INTO candidate (
-      candidate_id, name, summary,
-      immigration_position, immigration_score,
-      foreign_policy_position, foreign_policy_score,
-      social_policy_position, social_policy_score,
-      religion_position, religion_score,
-      total_score, score_last_updated
-    ) VALUES (
-      ${candidateId}, ${name}, ${details.summary},
-      ${details.immigration_position}, ${details.immigration_score},
-      ${details.foreign_policy_position}, ${details.foreign_policy_score},
-      ${details.social_policy_position}, ${details.social_policy_score},
-      ${details.religion_position}, ${details.religion_score},
-      ${details.total_score}, NOW()
-    )
-    ON CONFLICT (candidate_id) DO UPDATE SET
-      name = EXCLUDED.name,
-      summary = EXCLUDED.summary,
-      immigration_position = EXCLUDED.immigration_position,
-      immigration_score = EXCLUDED.immigration_score,
-      foreign_policy_position = EXCLUDED.foreign_policy_position,
-      foreign_policy_score = EXCLUDED.foreign_policy_score,
-      social_policy_position = EXCLUDED.social_policy_position,
-      social_policy_score = EXCLUDED.social_policy_score,
-      religion_position = EXCLUDED.religion_position,
-      religion_score = EXCLUDED.religion_score,
-      total_score = EXCLUDED.total_score,
-      score_last_updated = NOW()
-  `;
-}
-
-export async function updateTotalScore(
-  candidateId: string,
-  totalScore: number
-): Promise<void> {
-  await sql`
-    UPDATE candidate
-    SET total_score = ${totalScore}, score_last_updated = NOW()
-    WHERE candidate_id = ${candidateId}
-  `;
-}
-
-export async function getCandidateDetailsBatch(
+export async function getCandidateSummariesBatch(
   candidateIds: string[]
 ): Promise<Map<string, CandidateSummary>> {
   if (candidateIds.length === 0) return new Map();
   const rows = await sql`
-    SELECT
-      candidate_id, name, summary,
-      research_last_updated, score_last_updated,
-      immigration_research, immigration_position, immigration_score,
-      foreign_policy_research, foreign_policy_position, foreign_policy_score,
-      social_policy_research, social_policy_position, social_policy_score,
-      religion_research, religion_position, religion_score,
-      total_score, blacklist
+    SELECT candidate_id, name, summary, blacklist, positions_last_updated
     FROM candidate
     WHERE candidate_id = ANY(${candidateIds})
   ` as CandidateSummary[];
   return new Map(rows.map((r) => [r.candidate_id, r]));
+}
+
+// ── Candidate positions (issue_key → position_idx) ───────────────────────────
+
+export interface CandidatePositionRow {
+  candidate_id: string;
+  issue_key: string;
+  position_idx: number | null;
+}
+
+export async function upsertCandidatePositions(
+  candidateId: string,
+  positions: Record<string, number | null>
+): Promise<void> {
+  const entries = Object.entries(positions);
+  if (entries.length === 0) return;
+
+  await Promise.all(
+    entries.map(([issueKey, positionIdx]) =>
+      sql`
+        INSERT INTO candidate_positions (candidate_id, issue_key, position_idx, researched_at)
+        VALUES (${candidateId}, ${issueKey}, ${positionIdx}, NOW())
+        ON CONFLICT (candidate_id, issue_key) DO UPDATE SET
+          position_idx = EXCLUDED.position_idx,
+          researched_at = NOW()
+      `
+    )
+  );
+}
+
+export async function getCandidatePositionsBatch(
+  candidateIds: string[]
+): Promise<Map<string, Record<string, number | null>>> {
+  if (candidateIds.length === 0) return new Map();
+  const rows = await sql`
+    SELECT candidate_id, issue_key, position_idx
+    FROM candidate_positions
+    WHERE candidate_id = ANY(${candidateIds})
+  ` as CandidatePositionRow[];
+
+  const map = new Map<string, Record<string, number | null>>();
+  for (const row of rows) {
+    if (!map.has(row.candidate_id)) map.set(row.candidate_id, {});
+    map.get(row.candidate_id)![row.issue_key] = row.position_idx;
+  }
+  return map;
 }

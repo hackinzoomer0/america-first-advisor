@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Candidate } from "@/types/candidate";
+import { ISSUES } from "@/lib/issues_new";
 
 export function formatName(name: string): string {
   const [last, first] = name.split(", ");
@@ -46,48 +47,29 @@ export function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-const TOPICS: { label: string; scoreKey: keyof Candidate; positionKey: keyof Candidate }[] = [
-  { label: "Immigration",    scoreKey: "immigration_score",    positionKey: "immigration_position" },
-  { label: "Foreign Policy", scoreKey: "foreign_policy_score", positionKey: "foreign_policy_position" },
-  { label: "Social Policy",  scoreKey: "social_policy_score",  positionKey: "social_policy_position" },
-  { label: "Religion",       scoreKey: "religion_score",       positionKey: "religion_position" },
-];
-
-function scoreColor(score: number): string {
-  if (score >= 7) return "text-green-600 dark:text-green-400";
-  if (score >= 4) return "text-amber-600 dark:text-amber-400";
+function matchColor(score: number): string {
+  if (score >= 70) return "text-green-600 dark:text-green-400";
+  if (score >= 40) return "text-amber-600 dark:text-amber-400";
   return "text-red-600 dark:text-red-400";
 }
 
-function scoreBarColor(score: number): string {
-  if (score >= 7) return "bg-green-500 dark:bg-green-400";
-  if (score >= 4) return "bg-amber-500 dark:bg-amber-400";
-  return "bg-red-500 dark:bg-red-400";
-}
 
-function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
+function MatchRing({ score, size = 56 }: { score: number; size?: number }) {
   const radius = (size - 6) / 2;
   const circumference = 2 * Math.PI * radius;
-  const progress = (score / 10) * circumference;
-  const recommend = score >= 7;
+  const progress = (score / 100) * circumference;
+  const isGood = score >= 70;
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--groove)" strokeWidth={3} />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="var(--groove)"
-          strokeWidth={3}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={recommend ? "#22c55e" : "#ef4444"}
+          stroke={isGood ? "#22c55e" : score >= 40 ? "#f59e0b" : "#ef4444"}
           strokeWidth={3}
           strokeDasharray={circumference}
           strokeDashoffset={circumference - progress}
@@ -95,19 +77,61 @@ function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
           className="transition-all duration-500"
         />
       </svg>
-      <span className={`absolute text-sm font-bold tabular-nums ${scoreColor(score)}`}>
-        {score.toFixed(1)}
+      <span className={`absolute text-xs font-bold tabular-nums ${matchColor(score)}`}>
+        {score}%
       </span>
     </div>
   );
 }
 
+export function MatchRingSmall({ score }: { score: number }) {
+  const size = 44;
+  const radius = (size - 5) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (score / 100) * circumference;
+  const isGood = score >= 70;
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--groove)" strokeWidth={2.5} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={isGood ? "#22c55e" : score >= 40 ? "#f59e0b" : "#ef4444"}
+          strokeWidth={2.5}
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference - progress}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className={`absolute text-[10px] font-bold tabular-nums ${matchColor(score)}`}>
+        {score}%
+      </span>
+    </div>
+  );
+}
+
+const TAG_LABELS: Record<string, string> = {
+  foreign_policy: "Foreign Policy",
+  immigration: "Immigration",
+  economy: "Economy",
+  healthcare: "Healthcare",
+  legal_constitutional: "Legal & Constitutional",
+  technology: "Technology",
+  social_cultural: "Social & Cultural",
+};
+
 export function CandidateDetail({ candidate }: { candidate: Candidate }) {
-  const topics = TOPICS.map(({ label, scoreKey, positionKey }) => ({
-    label,
-    score: candidate[scoreKey] as number | null,
-    position: candidate[positionKey] as string | null,
-  }));
+  // Group issues by primary tag
+  const tagGroups: Record<string, typeof ISSUES> = {};
+  for (const issue of ISSUES) {
+    const tag = issue.tags[0];
+    if (!tagGroups[tag]) tagGroups[tag] = [];
+    tagGroups[tag].push(issue);
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,49 +140,47 @@ export function CandidateDetail({ candidate }: { candidate: Candidate }) {
           {candidate.summary}
         </p>
       )}
-      <div className="flex flex-col gap-3">
-        {topics.map(({ label, score, position }) => (
-          <div key={label} className="flex flex-col gap-2 rounded-lg border border-edge/60 bg-surface px-3.5 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-ink-faint">
-                {label}
-              </span>
-              {score !== null ? (
-                <span className={`text-sm font-bold tabular-nums ${scoreColor(score)}`}>
-                  {score.toFixed(1)}<span className="text-ink-ghost font-normal">/10</span>
-                </span>
-              ) : (
-                <span className="text-xs font-medium text-ink-ghost">N/A</span>
-              )}
+      {Object.entries(tagGroups).map(([tag, issues]) => {
+        const issuesWithPositions = issues.filter(
+          (i) => candidate.positions[i.key] !== undefined && candidate.positions[i.key] !== null
+        );
+        if (issuesWithPositions.length === 0) return null;
+
+        return (
+          <div key={tag} className="flex flex-col gap-2">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+              {TAG_LABELS[tag] ?? tag}
+            </h4>
+            <div className="flex flex-col gap-1.5">
+              {issuesWithPositions.map((issue) => {
+                const idx = candidate.positions[issue.key];
+                const positionText = idx !== null && idx !== undefined ? issue.positions[idx] : null;
+                if (!positionText) return null;
+
+                return (
+                  <div key={issue.key} className="flex flex-col gap-1 rounded-lg border border-edge/60 bg-surface px-3 py-2">
+                    <span className="text-[10px] font-medium text-ink-faint leading-snug">
+                      {issue.description}
+                    </span>
+                    <span className="text-xs leading-snug text-ink-dim">
+                      {positionText}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            {score !== null && (
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-groove">
-                <div
-                  className={`h-1.5 rounded-full transition-all duration-500 ${scoreBarColor(score)}`}
-                  style={{ width: `${score * 10}%` }}
-                />
-              </div>
-            )}
-            {score !== null && position ? (
-              <p className="text-xs leading-relaxed text-ink-dim">
-                {position}
-              </p>
-            ) : score === null ? (
-              <p className="text-xs leading-relaxed text-ink-faint italic">
-                Not enough data to evaluate this topic.
-              </p>
-            ) : null}
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
 export function CandidateCard({ candidate }: { candidate: Candidate }) {
   const [expanded, setExpanded] = useState(false);
-  const score = candidate.total_score;
-  const recommend = score !== null && score >= 7;
+  const score = candidate.match_score;
+  const hasScore = score !== null;
+  const isGood = hasScore && score >= 70;
   const style = partyStyle(candidate.party);
 
   return (
@@ -168,16 +190,14 @@ export function CandidateCard({ candidate }: { candidate: Candidate }) {
         className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-groove/50"
       >
         <div className="flex items-center gap-3.5">
-          {/* Score ring */}
-          {score !== null ? (
-            <ScoreRing score={score} />
+          {hasScore ? (
+            <MatchRing score={score} />
           ) : (
             <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-edge">
               <span className="text-xs font-medium text-ink-ghost">?</span>
             </div>
           )}
 
-          {/* Name + party */}
           <div className="flex flex-col gap-1.5">
             <span className="font-semibold text-ink text-sm leading-tight">
               {formatName(candidate.name)}
@@ -190,15 +210,15 @@ export function CandidateCard({ candidate }: { candidate: Candidate }) {
         </div>
 
         <div className="flex items-center gap-3">
-          {score !== null && (
+          {hasScore && (
             <span
               className={`rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide ${
-                recommend
+                isGood
                   ? "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400"
                   : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400"
               }`}
             >
-              {recommend ? "Vote" : "Withhold"}
+              {isGood ? "Strong Match" : score >= 40 ? "Partial Match" : "Low Match"}
             </span>
           )}
           <ChevronIcon expanded={expanded} />

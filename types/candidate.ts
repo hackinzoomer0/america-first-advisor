@@ -10,16 +10,9 @@ export interface Candidate {
   district: string;
   has_raised_funds: boolean;
   election_years: number[];
-  last_updated: Date | null;
+  positions_last_updated: Date | null;
   summary: string | null;
-  immigration_position: string | null;
-  immigration_score: number | null;
-  foreign_policy_position: string | null;
-  foreign_policy_score: number | null;
-  social_policy_position: string | null;
-  social_policy_score: number | null;
-  religion_position: string | null;
-  religion_score: number | null;
-  total_score: number | null;
+  positions: Record<string, number | null>;
+  match_score: number | null;
   blacklist: boolean;
 }
