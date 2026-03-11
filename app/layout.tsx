@@ -13,18 +13,25 @@ const _geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "America First Advisor",
+  title: "America First Advisor | Find Candidates Who Match Your Values",
   description:
-    "Find federal candidates in your district and see how they score on America First criteria across immigration, foreign policy, social policy, and religion.",
+    "AI-powered civic intelligence. Share your positions on key issues, then discover federal candidates in your district who align with your values on immigration, economy, foreign policy, and more.",
+  keywords: ["voter guide", "candidate matching", "federal elections", "civic intelligence", "political quiz"],
+  openGraph: {
+    title: "America First Advisor",
+    description: "Find candidates who match your values with AI-powered civic intelligence.",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8f9fb" },
-    { media: "(prefers-color-scheme: dark)", color: "#0c1021" },
+    { media: "(prefers-color-scheme: light)", color: "#fafbfc" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
   ],
   width: "device-width",
   initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

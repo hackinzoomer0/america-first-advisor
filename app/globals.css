@@ -1,36 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  --canvas:    #f8f9fb;
+  --canvas:    #fafbfc;
   --surface:   #ffffff;
   --card:      #ffffff;
-  --edge:      #e2e5ea;
-  --groove:    #f0f2f5;
-  --ink:       #0f172a;
-  --ink-dim:   #475569;
-  --ink-faint: #94a3b8;
-  --ink-ghost: #cbd5e1;
-  --accent:    #b91c1c;
+  --edge:      #e5e7eb;
+  --groove:    #f3f4f6;
+  --ink:       #111827;
+  --ink-dim:   #4b5563;
+  --ink-faint: #9ca3af;
+  --ink-ghost: #d1d5db;
+  --accent:    #dc2626;
+  --accent-hover: #b91c1c;
   --accent-soft: #fef2f2;
-  --accent-blue: #1e3a5f;
-  --radius:    0.75rem;
+  --accent-blue: #1e40af;
+  --accent-blue-soft: #eff6ff;
+  --success:   #059669;
+  --success-soft: #ecfdf5;
+  --warning:   #d97706;
+  --warning-soft: #fffbeb;
+  --radius:    0.625rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas:    #0c1021;
-    --surface:   #131829;
-    --card:      #171d30;
-    --edge:      #1e2640;
-    --groove:    #1a2035;
-    --ink:       #e8ecf4;
-    --ink-dim:   #8b95ad;
-    --ink-faint: #4e5872;
-    --ink-ghost: #2a3350;
+    --canvas:    #09090b;
+    --surface:   #0f0f12;
+    --card:      #18181b;
+    --edge:      #27272a;
+    --groove:    #1f1f23;
+    --ink:       #fafafa;
+    --ink-dim:   #a1a1aa;
+    --ink-faint: #71717a;
+    --ink-ghost: #3f3f46;
     --accent:    #ef4444;
-    --accent-soft: rgba(239, 68, 68, 0.08);
-    --accent-blue: #3b6fa0;
-    --radius:    0.75rem;
+    --accent-hover: #f87171;
+    --accent-soft: rgba(239, 68, 68, 0.12);
+    --accent-blue: #60a5fa;
+    --accent-blue-soft: rgba(96, 165, 250, 0.12);
+    --success:   #34d399;
+    --success-soft: rgba(52, 211, 153, 0.12);
+    --warning:   #fbbf24;
+    --warning-soft: rgba(251, 191, 36, 0.12);
+    --radius:    0.625rem;
   }
 }
 
@@ -38,24 +50,50 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  --color-canvas:      var(--canvas);
-  --color-surface:     var(--surface);
-  --color-card:        var(--card);
-  --color-edge:        var(--edge);
-  --color-groove:      var(--groove);
-  --color-ink:         var(--ink);
-  --color-ink-dim:     var(--ink-dim);
-  --color-ink-faint:   var(--ink-faint);
-  --color-ink-ghost:   var(--ink-ghost);
-  --color-accent:      var(--accent);
-  --color-accent-soft: var(--accent-soft);
-  --color-accent-blue: var(--accent-blue);
-  --radius-card:       var(--radius);
+  --color-canvas:           var(--canvas);
+  --color-surface:          var(--surface);
+  --color-card:             var(--card);
+  --color-edge:             var(--edge);
+  --color-groove:           var(--groove);
+  --color-ink:              var(--ink);
+  --color-ink-dim:          var(--ink-dim);
+  --color-ink-faint:        var(--ink-faint);
+  --color-ink-ghost:        var(--ink-ghost);
+  --color-accent:           var(--accent);
+  --color-accent-hover:     var(--accent-hover);
+  --color-accent-soft:      var(--accent-soft);
+  --color-accent-blue:      var(--accent-blue);
+  --color-accent-blue-soft: var(--accent-blue-soft);
+  --color-success:          var(--success);
+  --color-success-soft:     var(--success-soft);
+  --color-warning:          var(--warning);
+  --color-warning-soft:     var(--warning-soft);
+  --radius-card:            var(--radius);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   background: var(--canvas);
   color: var(--ink);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth transitions for theme changes */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Mapbox search styling overrides */
